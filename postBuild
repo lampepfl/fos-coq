@@ -1,0 +1,2 @@
+pip install --user coq_jupyter==1.5.0
+python -m coq_jupyter.install
