@@ -147,15 +147,9 @@ a value. If you recall that `T \/ S` is the data type corresponding to the
 proof that either `T` or `S`, the definition is simple enough:
 
 ```code
-Inductive value : t -> Prop :=
-| v_bvalue : forall t,
-    bvalue t ->
-    value t
-| v_nvalue : forall t,
-    nvalue t ->
-    value t
+Definition value (t : tm) : Prop :=
+  bvalue t \/ nvalue t.
 ```
-
 ### Operational semantics
 
 Having defined `tm`s and `value`s, we can define call-by-value operational
