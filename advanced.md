@@ -1,5 +1,5 @@
 ---
-title: My notebook
+title: FoS Coq notebook
 jupyter:
   nbformat: 4
   nbformat_minor: 2
@@ -16,10 +16,101 @@ jupyter:
 
 Adapted from a workshop given at [POPL 2008](https://www.cis.upenn.edu/~plclub/popl08-tutorial/).
 
+# Before we begin
+
+During the lecture, you have already seen how we can formulate CoC on paper.
+In this notebook, we will be working with Coq, an interactive theorem assistant
+with a type system based on an extension of CoC. The differences are slight.
+
+First things first: you can use the `Check` command to inspect types of terms.
+
+```code
+Check 0.
+```
+
+It is natural that we type `0` as `nat`.
+
+```code
+Check nat.
+```
+
+If we think in terms of set theory, then `nat` is a `Set`.
+More to the point, `Set` in Coq is a kind of types that represent _data_
+(more on this in a second).
+
+We can define our own types with the `Inductive` command:
+
+```code
+Inductive nat' : Set :=
+| zero' : nat'
+| succ' : nat' -> nat'
+.
+Check nat'.
+Check succ'.
+```
+
+The `Inductive` command introduces an _inductive_ data type, inductive in this case
+meaning being defined inductively. The data type needs to be introduced with _constructors_,
+which allow creating values of the type -- `nat'` has two constructors, `zero'` and `succ'`.
+The first is a basic value, while `succ'` allows creating `nat'`-s based on other `nat'`-s.
+The above definition is basically the same as the following Scala definition:
+
+```scala
+sealed trait Nat
+final case object Zero extends Nat
+final case class Succ(n: Nat) extends Nat
+```
+
+Recall that by Curry-Howard isomorphism, terms are proofs. We can then define
+a data type such that values of type `is_even' n` prove that `n` is even:
+
+```code
+Inductive is_even' : nat' -> Prop :=
+| zero_is_even' : is_even' zero'
+| double_succ_is_even' : forall n, is_even' n -> is_even' (succ' (succ' n))
+.
+```
+
+As expected, we can also define functions with term-dependent types:
+
+```code
+Check fun n : nat' => fun p : is_even' n => double_succ_is_even' n p.
+```
+
+Note that the type is of the form `forall n : nat' -> t` (more or less) - that's the equivalent of `Π(n : nat')t` from CoC.
+
+Now, let's come back to `Set`. You may have noticed that for `is_even'`, we've used `Prop` instead.
+What are those things? Well, here's what Coq can tell us:
+
+```code
+Check Set.
+Check Prop.
+```
+
+Both `Set` and `Prop` are universes of "proper" types, in the sense of the `*` sort you've seen in CoC,
+whereas `Type` is the equivalent of the "box" sort. How come we have two variants of `*`?
+The short answer is: `Set` is the universe of _data_, while `Prop` is the universe of _propositions_.
+That's honestly as much as you need to understand in order to work with Coq.
+
+The longer answer is that there's multiple small differences between them.
+Values from `Set` can be "extracted" to create OCaml programs, while values
+from `Prop` cannot (and will in fact be ignored when extracting values from `Set`).
+`Set` is predicative (meaning universal types can't quantify over other universal types,
+like in Hindley-Milner), while `Prop` is impredicative (meaning universal types
+are as powerful as in System F). `Set` supports forms of reduction that are unavailable
+to `Prop` on the basis of the proof irrelevance principle. There's other differences as well,
+but again: you don't actually need to know any of them 99% of the time.
+
+Now, let's start the actual workshop!
+
 # The NB language, back again
 
-In this notebook, we will be working with a language very similar to the NB
-language from the first assignment.
+During your first project, you worked with the NB language, a trivial
+system that had natural numbers, booleans and some basic operations for them.
+
+In this notebook, we will be working with a very similar language.
+Specifically, we will use Coq to encode terms from the NB language,
+as well as basic judgments and some simple proofs. 
 
 ## Definitions
 ### Grammar and terms 
@@ -36,8 +127,7 @@ t  ::= "true"                   terms
      | "iszero" t
 ```
 
-To represent the terms of this language in Coq, we will define `tm`, an
-`Inductive` data type:
+We will represent these terms in Coq with `tm`, an inductive data type:
 
 ``` code
 Inductive tm : Set :=
@@ -50,15 +140,8 @@ Inductive tm : Set :=
 | tm_iszero : tm -> tm.
 ```
 
-Compare the two definitions. For every rule in the grammar, there is a
-corresponding _constructor_. Each constructor is a value in Coq that allows us
-to obtain values of type `tm`. In contrast to the previous notebook, here we
-annotate every constructor with a type. `tm_true` is a constructor corresponding
-to the terminal rule `"true"` - it takes no arguments and is therefore annotated
-with the simple type `tm`. `tm_succ` is a constructor corresponding to the
-`"succ" t` rule - since the rule has a single subterm, the constructor is a
-function from `tm` to `tm`.
-
+This definition is mostly straightforward -- for every rule in the grammar,
+there's a corresponding constructor.
 Using the above definition, we can create values corresponding to the terms in our language:
 
 ```code
@@ -127,21 +210,6 @@ Check (n_succ tm_zero n_zero).
 You should now go back to the definitions and try to understand how they
 represent their corresponding inference rules.
 
-One thing that may still be puzzling are the `Set` and `tm -> Prop` annotation.
-If you are suspecting that the second one mentions `tm ->` because the
-corresponding type is a _type-level function_ from `tm` to `Prop`, you'd be correct:
-
-```code
-Check nvalue.
-Check nvalue tm_zero.
-```
-
-The difference between `Set` and `Prop` is much more subtle and fundamental. To
-put it briefly, types annotated as `Set` are meant to be used as data types,
-while those annotated as `Prop` are meant to be used as propositions. Fully
-explaining this distinction is beyond the scope of this course, but the above
-intuition should serve you well enough.
-
 As the last thing in this section, we will (finally) define what it means to be
 a value. If you recall that `T \/ S` is the data type corresponding to the
 proof that either `T` or `S`, the definition is simple enough:
@@ -150,6 +218,7 @@ proof that either `T` or `S`, the definition is simple enough:
 Definition value (t : tm) : Prop :=
   bvalue t \/ nvalue t.
 ```
+
 ### Operational semantics
 
 Having defined `tm`s and `value`s, we can define call-by-value operational
@@ -226,6 +295,10 @@ relation `eval_rtc` that corresponds to that verbal description.
 
 In case you get stuck or need a hint, you can find solutions to all the
 exercises near the bottom of the file.
+
+```code
+(** Write your solution here *)
+```
  
 **Exercise** Sometimes it is more convenient to use a big-step semantics for a
 language. Add the remaining constructors to finish the inductive definition
@@ -236,7 +309,8 @@ may need to add the premise `nvalue v` to the appropriate cases.
 
 Hint: You should end up with a total of 8 cases.
 
-```
+```code
+(**
 Inductive full_eval : tm -> tm -> Prop :=
 | f_value : forall v,
     value v ->
@@ -249,6 +323,7 @@ Inductive full_eval : tm -> tm -> Prop :=
     nvalue v ->
     full_eval t v ->
     full_eval (tm_succ t) (tm_succ v).
+*)
 ```
 
 ## Proofs
@@ -555,7 +630,7 @@ Admitted.
 replace the hypothesis `H` with its components using the names in the pattern
 `p`. Observe the pattern in the example below.
 
-``` code
+```code
 Lemma m_two_conj : forall t t' t'',
   eval t t' /\ eval t' t'' ->
   eval_many t t''.
@@ -573,7 +648,7 @@ infix conjunction is right-associative, which is significant when trying to
 write nested patterns. We will later see how to use `destruct` on many different
 sorts of hypotheses.
  
-``` code
+```code
 Lemma m_three_conj : forall t t' t'' t''',
   eval t t' /\ eval t' t'' /\ eval t'' t''' ->
   eval_many t t'''.
@@ -591,7 +666,7 @@ Qed.
 **Example** If your goal is a conjunction, use `split` to break it apart into
 two separate subgoals.
  
-``` code
+```code
 Lemma m_three : forall t t' t'' t''',
   eval t t' ->
   eval t' t'' ->
@@ -610,7 +685,7 @@ Qed.
 
 **Exercise** Hint: You might find lemma `m_three` useful here.
  
-``` code
+```code
 Lemma m_if_iszero_conj : forall v t2 t2' t3 t3',
   nvalue v /\ eval t2 t2' /\ eval t3 t3' ->
   eval_many (tm_if (tm_iszero tm_zero) t2 t3) t2' /\
@@ -626,7 +701,7 @@ Admitted.
 **Example** If we have a disjunction in the context, we can use `destruct` to
 reason by cases on the hypothesis. Note the syntax of the associated pattern.
  
-``` code
+```code
 Lemma e_if_true_or_false : forall t1 t2,
   eval t1 tm_true \/ eval t1 tm_false ->
   eval_many (tm_if t1 t2 t2) t2.
@@ -651,7 +726,7 @@ Qed.
 **Example** Use `destruct` to reason by cases on an inductively defined datatype
 or proposition.
 
-``` code
+```code
 Lemma e_iszero_nvalue : forall v,
   nvalue v ->
   eval (tm_iszero v) tm_true \/
@@ -680,7 +755,7 @@ Proof.
     right.
 ```
 
-``` code
+```code
     apply e_iszerosucc. apply Hn.
 Qed.
 ```
@@ -689,7 +764,7 @@ Qed.
 defined datatype or proposition. This is the same as `destruct`, except that it
 also introduces an induction hypothesis in the inductive cases.
  
-``` code
+```code
 Lemma m_iszero : forall t u,
   eval_many t u ->
   eval_many (tm_iszero t) (tm_iszero u).
@@ -707,7 +782,7 @@ Work on the following exercise.
 
 **Exercise** 
 
-``` code
+```code
 Lemma m_trans : forall t t' u,
   eval_many t t' ->
   eval_many t' u ->
@@ -745,32 +820,38 @@ Note: Even though this lemma is in a comment, its solution is also at the
 bottom. (Coq will give an error if we leave it uncommented since it mentions the
 `eval_rtc` relation, which was the solution to another exercise.)
 
-```
+```code
+(**
 Lemma eval_rtc_many : forall t u,
   eval_rtc t u ->
   eval_many t u.
+*)
 ```
 
 **Exercise** Prove the following lemma.
 
-```
+```code
+(**
 Lemma eval_many_rtc : forall t u,
   eval_many t u ->
   eval_rtc t u.
+*)
 ```
 
 
 **Exercise** Prove the following lemma.
 
-```
+```code
+(**
 Lemma full_eval_to_value : forall t v,
   full_eval t v ->
   value v.
+*)
 ```
 
 # Solutions to Exercises
 
-``` code
+```code
 Inductive eval_rtc : tm -> tm -> Prop :=
 | r_eval : forall t t',
     eval t t' ->
