@@ -18,9 +18,27 @@ Adapted from a workshop given at [POPL 2008](https://www.cis.upenn.edu/~plclub/p
 
 # Before we begin
 
+The point of this workshop is to give you a feel for what is it like to do
+proofs in Coq, and also to illustrate what the Curry-Howard isomorphism really
+is and what are its applications. This workshop is not graded, and you will not
+see Coq during the exam (though there's a big chance you'll see Curry-Howard,
+and you may see a fragment of CoC).
+
+However, we cannot actually properly teach you how to do proofs in Coq or to
+explain everything we will do in details, because we simply don't have enough
+time for that. In case you are interested in knowing more, you can go through
+this notebook (or its full version, check the README
+[here](https://c4science.ch/diffusion/9452/)) in detail yourself, you could read
+the [Software Foundations](https://softwarefoundations.cis.upenn.edu/) book, and
+you could take a look at the
+[Certified Programming with Dependent Types](http://adam.chlipala.net/cpdt/) book.
+
+# Coq vs CoC
+
 During the lecture, you have already seen how we can formulate CoC on paper.
 In this notebook, we will be working with Coq, an interactive theorem assistant
-with a type system based on an extension of CoC. The differences are slight.
+with a type system based on an extension of CoC. The differences are slight,
+but they are there, so let's start by inspecting them.
 
 First things first: you can use the `Check` command to inspect types of terms.
 
@@ -28,13 +46,13 @@ First things first: you can use the `Check` command to inspect types of terms.
 Check 0.
 ```
 
-It is natural that we type `0` as `nat`.
+Naturally, we type `0` as `nat`.
 
 ```code
 Check nat.
 ```
 
-If we think in terms of set theory, then `nat` is a `Set`.
+If we think in terms of set theory, then all `nat`s form a `Set`.
 More to the point, `Set` in Coq is a kind of types that represent _data_
 (more on this in a second).
 
@@ -42,18 +60,14 @@ We can define our own types with the `Inductive` command:
 
 ```code
 Inductive nat' : Set :=
-| zero' : nat'
-| succ' : nat' -> nat'
+| zero'
+| succ' (n : nat')
 .
-Check nat'.
-Check succ'.
 ```
 
-The `Inductive` command introduces an _inductive_ data type, inductive in this case
-meaning being defined inductively. The data type needs to be introduced with _constructors_,
-which allow creating values of the type -- `nat'` has two constructors, `zero'` and `succ'`.
-The first is a basic value, while `succ'` allows creating `nat'`-s based on other `nat'`-s.
-The above definition is basically the same as the following Scala definition:
+The `Inductive` command introduces an _inductive_ data type, inductive in this
+case meaning being defined inductively. The above definition is basically the
+same as the following Scala definition:
 
 ```scala
 sealed trait Nat
@@ -61,56 +75,139 @@ final case object Zero extends Nat
 final case class Succ(n: Nat) extends Nat
 ```
 
-Recall that by Curry-Howard isomorphism, terms are proofs. We can then define
-a data type such that values of type `is_even' n` prove that `n` is even:
+We say that `zero'` and `succ'` are _constructors_ for the `nat'` type, since they
+are the fundamental/primitive way of constructing values of type `nat'`.  They are
+themselves values or functions:
+
+```code
+Check zero'.
+Check succ'.
+```
+
+And they can also be used to destruct/pattern match on values of type `nat'`:
+
+```code
+Fixpoint add (n : nat') (m : nat') : nat' :=
+  match n with
+  | zero'   => m
+  | succ' n => add n (succ' m)
+  end.
+```
+
+Coq is an interactive theorem assistant, so we'd like to use it to do some
+proofs. Recall that by the Curry-Howard isomorphism, types are propositions and
+terms that inhabit them are proofs that those propositions are true.
+Then, if we want to do proofs about whether a number is even or not,
+we first thing need to define a type for this proposition. Specifically, if `n`
+is even, we would like to be able to construct a value of type `is_even' n`
+(note that `is_even'` will need to be a type operator). We can define
+`is_even'` as follows:
+
 
 ```code
 Inductive is_even' : nat' -> Prop :=
-| zero_is_even' : is_even' zero'
-| double_succ_is_even' : forall n, is_even' n -> is_even' (succ' (succ' n))
+| zero_even' : is_even' zero'
+| double_succ_even' (n : nat') (p : is_even' n) : is_even' (succ' (succ' n))
 .
 ```
 
-As expected, we can also define functions with term-dependent types:
+As expected, we needed to annotate `is_even'` with `nat' -> Prop` as its type,
+meaning it's a type operator from `nat'`s to a propositions (more on `Prop` in a
+second). We have two constructors for this proposition, and both of them now
+have annotations for their result types.
+
+The first one, `zero_even'`, is a proof that 0 is even, and accordingly its type
+is `is_even' zero'`. The other one is more complicated. We can understand it as
+follows: if we want to prove that `n+2` is even, we need to have `n` (naturally)
+and we need a proof that `n` is even -- a value of type `is_even' n`.
+
+We can also type function literals with dependent function types.
+For instance, say that we want to take a value of type `is_even' n` 
+and we want to apply `double_succ_even'` to this value twice --
+in this case, we want to take a value `n` and use it in a type,
+so we need a term-dependent function type. Here's a definition of this
+function in Coq:
 
 ```code
-Check fun n : nat' => fun p : is_even' n => double_succ_is_even' n p.
+Check fun n : nat' => 
+      fun p : is_even' n =>
+      double_succ_even' _ (double_succ_even' _ p).
 ```
 
-Note that the type is of the form `forall n : nat' -> t` (more or less) - that's the equivalent of `Π(n : nat')t` from CoC.
+(Ignore the underscores for now, they are for boring arguments.)
+The type of this value has the form `forall n : nat', t`.
+That's the Coq equivalent of `(n : nat') -> t` (or `Π(n : nat')t`) 
+from CoC.
+Believe it or not, the above value is a proof of a trivial statement --
+namely, that if `n` is even, then so is `n + 4`.
+You can read out loud this value's type as follows: "for all n, n being even
+implies that n+4 is even".
 
-Now, let's come back to `Set`. You may have noticed that for `is_even'`, we've used `Prop` instead.
-What are those things? Well, here's what Coq can tell us:
+Why the underscores? Because `double_succ_even'` actually needs _two_ arguments,
+an `n : nat'` and a `p : is_even' n`. The value for the first one can be figured
+out based on the type of the second one, so with an underscore we can tell Coq
+exactly that -- to figure out for us what value should be passed there. Neat.
+
+
+## Sets and Props
+
+Now, let's come back to `Set`. You may have noticed that for `is_even'`, we've
+used `Prop` instead. What are those things? Well, here's what Coq can tell us:
 
 ```code
 Check Set.
 Check Prop.
 ```
 
-Both `Set` and `Prop` are universes of "proper" types, in the sense of the `*` sort you've seen in CoC,
-whereas `Type` is the equivalent of the "box" sort. How come we have two variants of `*`?
-The short answer is: `Set` is the universe of _data_, while `Prop` is the universe of _propositions_.
-That's honestly as much as you need to understand in order to work with Coq.
+Both `Set` and `Prop` are universes of "proper" types, in the sense of the `*`
+sort you've seen in CoC, whereas `Type` is the equivalent of the "box" sort. How
+come we have two variants of `*`? The short answer is: `Set` is the universe of
+_data_, while `Prop` is the universe of _propositions_. That's honestly as much
+as you need to understand in order to work with Coq.
 
-The longer answer is that there's multiple small differences between them.
-Values from `Set` can be "extracted" to create OCaml programs, while values
-from `Prop` cannot (and will in fact be ignored when extracting values from `Set`).
-`Set` is predicative (meaning universal types can't quantify over other universal types,
-like in Hindley-Milner), while `Prop` is impredicative (meaning universal types
-are as powerful as in System F). `Set` supports forms of reduction that are unavailable
-to `Prop` on the basis of the proof irrelevance principle. There's other differences as well,
-but again: you don't actually need to know any of them 99% of the time.
+The longer answer is that there's multiple small differences between them, all
+aligned with the above intuition. Values from `Set` can be "extracted" to create
+OCaml programs, while values from `Prop` cannot (and will in fact be ignored
+when extracting values from `Set`). `Set` is predicative (meaning universal
+types can't quantify over other universal types, like in Hindley-Milner), while
+`Prop` is impredicative (meaning universal types are as powerful as in System
+F). On the basis of the proof irrelevance principle, we assume that any two values
+of the same type from `Prop` are equal. We do not do the same for types in `Set`,
+which allows us the nice property that `0` is different from `1` and, more generally,
+allows distinguishing any two values via, for instance, pattern matching.
+There's other differences as well, but again: you don't actually need to know
+any of them 99% of the time.
+
+## Alternative form of Inductive
+
+Recall the types of `zero'` and `succ'`:
+
+```code
+Check zero'.
+Check succ'.
+```
+
+We could also define `nat'` by annotating each constructor with its type, as follows:
+
+```coq
+Inductive nat' : Set :=
+| zero' : nat'
+| succ' : nat' -> nat'
+.
+```
+
+This is more convenient for more complex definitions, so we will be using this
+form from now on.
 
 Now, let's start the actual workshop!
 
 # The NB language, back again
 
-During your first project, you worked with the NB language, a trivial
-system that had natural numbers, booleans and some basic operations for them.
-
+During your first project, you worked with the NB language, a trivial system
+that had natural numbers, booleans and some basic operations for them.
 In this notebook, we will be working with a very similar language.
-Specifically, we will use Coq to encode terms from the NB language,
-as well as basic judgments and some simple proofs. 
+We will use Coq to encode terms from the NB language, as well as basic judgments
+and some simple proofs.
 
 ## Definitions
 ### Grammar and terms 
@@ -145,7 +242,7 @@ there's a corresponding constructor.
 Using the above definition, we can create values corresponding to the terms in our language:
 
 ```code
-(* Represents "if (iszero 0) false true" *)
+(* Represents the term "if (iszero 0) then false else true" *)
 Check (tm_if (tm_iszero tm_zero) tm_false tm_true).
 ```
 
@@ -153,33 +250,24 @@ Check (tm_if (tm_iszero tm_zero) tm_false tm_true).
 
 Next, we want to define what it means to be a _value_ in our language. While in
 the original NB language we did so through grammar rules, it's equally valid to
-define a judgment which tells us which terms are boolean and numeric values
-(correspondingly, `bvalue` and `nvalue`):
+define judgments which tells us which terms are boolean and numeric values.
+The judgments will have the form `⊢ bvalue t` and `⊢ nvalue t` (for reasons
+which will become clear in a second). They are defined as follows:
 
 ```
-  ---------------  (b_true)
-  ⊢ bvalue (true)
+   ⊢ bvalue true       (b_true)
+   ⊢ bvalue false      (b_false)
 
-  ---------------- (b_false)
-  ⊢ bvalue (false)
-
-  
-  ---------- (n_zero)
-  ⊢ nvalue 0
+     ⊢ nvalue 0        (n_zero)
   
      ⊢ nvalue t
-  ----------------- (n_succ)
+  -----------------    (n_succ)
   ⊢ nvalue (succ t)
 ```
 
-Recall that from Curry-Howard correspondence we know that types correspond to
-propositions and values correspond to proofs. Therefore, we can represent the
-above judgements in Coq by defining types corresponding to the judgments. Those
-types are `bvalue t` and `nvalue t`. Being able to create a well-typed value of
-type `nvalue t` is the same as being able to construct a proof that a given term
-is an `nvalue`; same notion applies to  `bvalue t`.
-
-We define said types as follows:
+How do we represent these judgments in Coq? Both `bvalue` and `nvalue` will need
+to be type operators, like `is_even'`. A judgment is clearly a proposition, so
+they will both be `Prop`s. The actual definitions are as follows:
 
 ```code
 Inductive bvalue : tm -> Prop := 
@@ -193,26 +281,25 @@ Inductive nvalue : tm -> Prop :=
     nvalue (tm_succ t).
 ```
 
-Those definitions should look similar to the inference rules above, although
-they may also look slightly confusing. Before trying to understand their every
-part, it may help to see how they are meant to be used.
+We have one constructor per each axiom and inference rule -- observe that the
+constructor types are actually quite similar to the rules they represent.
+We had to assign `n_succ` a dependent function type, since the corresponding
+inference rule is implicitly quantified with a `t`.
 
-Again, the _type_ `nvalue t` represents the _proposition_ that `t` is a numeric
-value. For instance, `nvalue (tm_succ tm_zero)` represents the proposition that
-the successor of zero (or simply one) is a numeric value. To show that this
-proposition is true, we need to construct a value of said type. We can do that
-as follows:
+Let's emphasize again what we have. The _type_ `nvalue t` represents the
+_proposition_ that `t` is a numeric value. For instance, `nvalue (tm_succ
+tm_zero)` represents the proposition that the successor of zero (or simply one)
+is a numeric value. To show that this proposition is true, we need to construct
+a value of said type. We can do that as follows:
 
 ```code
-Check (n_succ tm_zero n_zero).
+(** Note: n_succ needs two arguments, a `t : tm` and an `nvalue t`. *)
+Check (n_succ tm_zero n_zero). 
 ```
 
-You should now go back to the definitions and try to understand how they
-represent their corresponding inference rules.
-
 As the last thing in this section, we will (finally) define what it means to be
-a value. If you recall that `T \/ S` is the data type corresponding to the
-proof that either `T` or `S`, the definition is simple enough:
+a value. In Coq, `T \/ S` is the data type corresponding to the proof that
+either `T` or `S` is true. If we use it, the definition is simple enough:
 
 ```code
 Definition value (t : tm) : Prop :=
@@ -222,9 +309,11 @@ Definition value (t : tm) : Prop :=
 ### Operational semantics
 
 Having defined `tm`s and `value`s, we can define call-by-value operational
-semantics for our language. We will define an inductive data type `eval (t : tm)
-(t' : tm) : Prop` corresponding to the proposition that `t` evaluates to `t'` in
-a single step. The definition is as follows:
+semantics for our language.
+Formally, reduction was a relation between terms.
+In Coq, we will define an inductive data type `eval (t : tm) (t' : tm) : Prop`
+corresponding to the proposition that `t` evaluates to `t'` in a single step.
+The definition is as follows:
 
 ```code
 Inductive eval : tm -> tm -> Prop :=
@@ -283,6 +372,18 @@ Inductive eval_many : tm -> tm -> Prop :=
     eval_many t' u ->
     eval_many t u.
 ```
+
+<!--
+### Aside
+
+You may be surprised that we defined data types for propositions that a term is
+a value and that a term evaluates to another term. We could also define a function
+that checks if a term is a value and returns a boolean, and a function that takes
+a term and returns the term its argument reduces to. How come we didn't do that?
+
+Here we could discuss decidability vs. undecidability and the fact that it's
+difficult to do induction on fixpoints.
+-->
 
 ### Exercises
 
